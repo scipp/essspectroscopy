@@ -46,9 +46,9 @@ packaging==24.1
     # via matplotlib
 pillow==10.4.0
     # via matplotlib
-plopp==24.9.1
+plopp==24.9.2
     # via scippneutron
-polystar==0.4.4
+polystar==0.4.5
     # via choppera
 pyparsing==3.1.4
     # via matplotlib
@@ -65,7 +65,7 @@ scipp==24.9.1
     #   choppera
     #   scippneutron
     #   scippnexus
-scippneutron==24.8.0
+scippneutron==24.9.0
     # via -r base.in
 scippnexus==24.9.0
     # via

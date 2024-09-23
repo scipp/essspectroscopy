@@ -43,6 +43,7 @@ dynamic = ["version"]
 
 [project.optional-dependencies]
 test = [
+    "pooch",
     "pytest",
 ]
 
