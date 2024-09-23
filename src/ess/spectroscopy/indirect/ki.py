@@ -11,6 +11,7 @@ import scipp as sc
 from scippnexus import Group
 
 from ess.spectroscopy.types import (
+    Filename,
     FocusComponentName,
     FocusComponentNames,
     IncidentDirection,
@@ -19,7 +20,6 @@ from ess.spectroscopy.types import (
     IncidentWavelength,
     IncidentWavenumber,
     IncidentWavevector,
-    NeXusFileName,
     PrimaryFocusDistance,
     PrimaryFocusTime,
     PrimarySpectrometerObject,
@@ -75,7 +75,7 @@ def determine_name_with_type(
     return next(iter(found))
 
 
-def guess_source_name(file: NeXusFileName) -> SourceName:
+def guess_source_name(file: Filename) -> SourceName:
     """Guess the name of the source in the NeXus instrument file"""
     from scippnexus import File, NXmoderator, NXsource
 
@@ -87,7 +87,7 @@ def guess_source_name(file: NeXusFileName) -> SourceName:
         return SourceName(name)
 
 
-def guess_sample_name(file: NeXusFileName) -> SampleName:
+def guess_sample_name(file: Filename) -> SampleName:
     """Guess the name of the sample in the NeXus instrument file"""
     from scippnexus import File, NXsample
 
@@ -97,7 +97,7 @@ def guess_sample_name(file: NeXusFileName) -> SampleName:
         return SampleName(name)
 
 
-def guess_focus_component_names(file: NeXusFileName) -> FocusComponentNames:
+def guess_focus_component_names(file: Filename) -> FocusComponentNames:
     """Guess the component names which define the focus of a Primary Spectrometer
 
     Note
@@ -147,7 +147,7 @@ def guess_focus_component_names(file: NeXusFileName) -> FocusComponentNames:
     return FocusComponentNames(focus_names)
 
 
-def source_position(file: NeXusFileName, source: SourceName) -> SourcePosition:
+def source_position(file: Filename, source: SourceName) -> SourcePosition:
     """Extract the position of the named source from a NeXus file"""
     from scippnexus import File, compute_positions
 
@@ -155,7 +155,7 @@ def source_position(file: NeXusFileName, source: SourceName) -> SourcePosition:
         return compute_positions(data['entry/instrument'][source][...])['position']
 
 
-def sample_position(file: NeXusFileName, sample: SampleName) -> SamplePosition:
+def sample_position(file: Filename, sample: SampleName) -> SamplePosition:
     """Extract the position of the named sample from a NeXus file"""
     from scippnexus import File, compute_positions
 
@@ -164,7 +164,7 @@ def sample_position(file: NeXusFileName, sample: SampleName) -> SamplePosition:
 
 
 def focus_distance(
-    file: NeXusFileName, origin: SourcePosition, names: FocusComponentNames
+    file: Filename, origin: SourcePosition, names: FocusComponentNames
 ) -> PrimaryFocusDistance:
     """Find the average distance from the source position to the named components
 
@@ -194,8 +194,6 @@ def focus_distance(
     """
     from scippnexus import File, compute_positions
 
-    from ..utils import norm
-
     pos = 0 * origin
     with File(file) as data:
         for name in names:
@@ -214,7 +212,7 @@ def focus_time(
 
 
 def primary_path_length(
-    file: NeXusFileName, source: SourcePosition, sample: SamplePosition
+    file: Filename, source: SourcePosition, sample: SamplePosition
 ) -> SourceSamplePathLength:
     """Compute the primary spectrometer path length from source to sample positions
 
@@ -238,7 +236,7 @@ def primary_path_length(
 
 
 def primary_spectrometer(
-    file: NeXusFileName,
+    file: Filename,
     source: SourceName,
     sample: SampleName,
     frequency: SourceFrequency,
