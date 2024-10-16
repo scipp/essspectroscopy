@@ -6,7 +6,10 @@ from __future__ import annotations
 from loguru import logger
 from scipp import Variable
 
-from ..types import NeXusFileName
+from ..types import NeXusFileName, NormWavelengthEvents, NXspeFileName
+
+# PIXEL_NAME = 'event_id'
+PIXEL_NAME = 'detector_number'
 
 
 def _load_all(group, obj_type):
@@ -158,8 +161,8 @@ def detector_per_pixel(triplets: dict) -> dict[int, str]:
 
 
 def combine_analyzers(analyzers: dict, triplets: dict):
-    """Combine needed analyzer properties into a single array, duplicating information,
-    to have per-pixel data
+    """Combine needed analyzer properties into a single array,
+    duplicating information, to have per-pixel data
 
     BIFROST has 45 analyzers and 45 triplet detectors, each with some number of pixels,
     N. Calculations for the properties of neutrons which make it to each detector pixel
@@ -186,8 +189,7 @@ def combine_analyzers(analyzers: dict, triplets: dict):
     Returns
     -------
     :
-        A single array with 'event_id' pixel dimension and the
-        per-pixel analyzer information
+        A single array with pixel dimension and the per-pixel analyzer information
     """
     from scipp import Dataset, array, concat
     from scippnexus import compute_positions
@@ -202,8 +204,8 @@ def combine_analyzers(analyzers: dict, triplets: dict):
 
     p2a = {k: extracted[d2a[v]] for k, v in p2d.items()}
     pixels = sorted(p2a)
-    data = concat([p2a[p] for p in pixels], dim='event_id')
-    data['event_id'] = array(values=pixels, dims=['event_id'], unit=None)
+    data = concat([p2a[p] for p in pixels], dim=PIXEL_NAME)
+    data[PIXEL_NAME] = array(values=pixels, dims=[PIXEL_NAME], unit=None)
     return data
 
 
@@ -226,19 +228,18 @@ def combine_detectors(triplets: dict):
     Returns
     -------
     :
-        A single array with 'event_id' pixel dimension and the
-        per-pixel center of mass position
+        A single array with pixel dimension and the per-pixel center of mass position
     """
     from scipp import Dataset, concat, sort
 
     def extract(obj):
         pixels = obj['data'].coords['detector_number']
         midpoints = obj['data'].coords['position']
-        return Dataset(data={'event_id': pixels, 'position': midpoints})
+        return Dataset(data={PIXEL_NAME: pixels, 'position': midpoints})
 
     data = concat([extract(v) for v in triplets.values()], dim='arm')
-    data = Dataset({k: v.flatten(to='event_id') for k, v in data.items()})
-    return sort(data, data['event_id'].data)
+    data = Dataset({k: v.flatten(to=PIXEL_NAME) for k, v in data.items()})
+    return sort(data, data[PIXEL_NAME].data)
 
 
 def find_sample_detector_flight_time(sample, analyzers, detector_positions):
@@ -286,7 +287,7 @@ def get_triplet_events(triplets):
     """
     from scipp import concat, sort
 
-    events = concat([x['data'] for x in triplets], dim='arm').flatten(to='event_id')
+    events = concat([x['data'] for x in triplets], dim='arm').flatten(to=PIXEL_NAME)
     events = sort(events, events.coords['detector_number'])
     return events
 
@@ -335,6 +336,8 @@ def get_unwrapped_events(
     }
     pipeline = Pipeline(ki_providers, params=params)
     primary = pipeline.get(PrimarySpectrometerObject).compute()
+    pipeline[PrimarySpectrometerObject] = primary
+    params[PrimarySpectrometerObject] = primary
 
     events = sample_events.copy()
     events.bins.coords['frame_time'] = pipeline.get(SampleTime).compute()
@@ -477,6 +480,94 @@ def add_momentum_axes(ki_params, kf_params, events, a3: Variable):
     return events
 
 
+def add_wavelength_axes(ki_params, kf_params, events, monitor, monitor_name):
+    """Convert to incident wavelength per event and independent monitor axis
+
+    Parameters
+    ----------
+    ki_params:
+        A dictionary of parameters needed by the incident-spectrometer sciline pipeline
+    kf_params:
+        A dictionary of parameters needed by the secondary-spectrometer sciline pipeline
+    events:
+        Event data, presumably with per-event incident energy (or wavelength, or
+        inverse velocity == slowness) already calculated; the basis for the returned
+        events
+    monitor:
+        A beam monitor with one independent axis (time since last pulse as measured).
+        The monitor intensity is expected to be a histogram along the one independent
+        axis, but event monitor data should work as well.
+    monitor_name:
+        The name of the provided beam monitor, used to get its position in the
+        primary spectrometer
+
+    Returns
+    -------
+    :
+        The events with a new coordinate, 'incident_wavelength'.
+        And the monitor with 'incident_wavelength' coordinate.
+    """
+    from sciline import Pipeline
+
+    from ..types import (
+        FrameTimeMonitor,
+        # SlownessMonitor,
+        IncidentWavelength,
+        MonitorName,
+        WavelengthMonitor,
+    )
+    from .kf import providers as kf_providers
+    from .ki import providers as ki_providers
+    from .normalisation import providers as monitor_providers
+
+    params = {
+        MonitorName: monitor_name,
+        FrameTimeMonitor: monitor,
+    }
+    params.update(ki_params)
+    params.update(kf_params)
+    pipeline = Pipeline(monitor_providers + ki_providers + kf_providers, params=params)
+    # slowness = pipeline.compute(SlownessMonitor)
+    # pipeline[SlownessMonitor] = slowness
+    wavelength_monitor = pipeline.compute(WavelengthMonitor)
+    events.bins.coords['incident_wavelength'] = pipeline.compute(IncidentWavelength)
+    return events, wavelength_monitor
+
+
+def get_geometric_a4(kf_params):
+    from sciline import Pipeline
+
+    from ..types import DetectorGeometricA4
+    from .kf import providers
+
+    pipeline = Pipeline(providers, params=kf_params)
+    geometric_a4 = pipeline.compute(DetectorGeometricA4)
+    return geometric_a4
+
+
+def normalise_wavelength_events(ki_params, kf_params, events, monitor):
+    from sciline import Pipeline
+
+    from ..types import (
+        NormWavelengthEvents,
+        WavelengthBins,
+        WavelengthEvents,
+        WavelengthMonitor,
+    )
+    from .normalisation import providers
+
+    params = {
+        WavelengthEvents: events,
+        WavelengthMonitor: monitor,
+        WavelengthBins: monitor.coords['incident_wavelength'],
+    }
+    params.update(ki_params)
+    params.update(kf_params)
+    pipeline = Pipeline(providers, params=params)
+    events = pipeline.compute(NormWavelengthEvents)
+    return events
+
+
 def split(
     triplets,
     analyzers,
@@ -513,6 +604,10 @@ def split(
     :
         A list[[triplet, analyzer, monitor]] of individual (a3, a4) setting(s)
     """
+    # TODO It is probably necessary to split on _at least_ chopper settings as well
+    #      to ensure only single wavelength-band data is kept per setting for export to
+    #      SQW and other formats. Testing this is currently fraught because only a
+    #      singular chopper configuration is simulated.
     from scipp import lookup
 
     from ..utils import is_in_coords
@@ -635,16 +730,19 @@ def one_setting(
     kf_params, sample_detector_flight_time = find_sample_detector_flight_time(
         sample, analyzers, detector_positions
     )
-    sample_events = get_sample_events(triplet_events, sample_detector_flight_time)
+    events = get_sample_events(triplet_events, sample_detector_flight_time)
     ki_params, unwrapped_events, primary = get_unwrapped_events(
-        filename, names['source'], names['sample'], sample_events, names['focus']
+        filename, names['source'], names['sample'], events, names['focus']
     )
     ei, en, ef = get_energy_axes(ki_params, kf_params)
 
-    energy_events = sample_events.copy()
-    energy_events.bins.coords['energy_transfer'] = en.to(unit='meV')
-    energy_events.bins.coords['incident_energy'] = ei
-    energy_events.coords['final_energy'] = ef
+    # energy_events = sample_events.copy()
+    events.bins.coords['energy_transfer'] = en.to(unit='meV')
+    events.bins.coords['incident_energy'] = ei
+    events.coords['final_energy'] = ef
+
+    # this already includes the tank a4 offset, right?
+    events.coords['theta'] = get_geometric_a4(kf_params)
 
     if 'a3' in triplet_events.coords:
         # this _should_ be one (a3, a4) setting,
@@ -657,20 +755,24 @@ def one_setting(
             logger.warning("No a3 present in setting, assuming 0 a3")
         a3 = scalar(0, unit='deg')
 
-    energy_momentum_events = add_momentum_axes(ki_params, kf_params, energy_events, a3)
+    events = add_momentum_axes(ki_params, kf_params, events, a3)
+
+    # Set up the normalisation by adding a 'incident_wavelength' coordinate to
+    # the individual events and the normalisation monitor
+    events, monitor = add_wavelength_axes(
+        ki_params, kf_params, events, norm_monitor, names['monitor']
+    )
+
+    norm_events = normalise_wavelength_events(ki_params, kf_params, events, monitor)
 
     return {
         'triplet_events': triplet_events,
-        'sample_events': sample_events,
-        'unwrapped_events': unwrapped_events,
+        'events': events,
         'norm_monitor': norm_monitor,
-        'energy_events': energy_events,
         'sample_detector_flight_time': sample_detector_flight_time,
         'analyzers': analyzers,
-        'energy_momentum_events': energy_momentum_events,
-        # 'detectors': detectors,
-        # 'monitors': monitors,
-        # 'triplets': triplets,
+        'wavelength_monitor': monitor,
+        'norm_events': norm_events,
     }
 
 
@@ -828,7 +930,7 @@ def bifrost(
     may not all be useful, and are subject to pruning as experience is gained with
     the workflow.
     """
-    import scipp as sc
+    from scipp import concat
     from tqdm import tqdm
 
     named_components = component_names(
@@ -855,7 +957,7 @@ def bifrost(
             settings, desc='(a3, a4) settings'
         )
     ]
-    return {k: sc.concat([d[k] for d in data], 'setting') for k in data[0]}
+    return {k: concat([d[k] for d in data], 'setting') for k in data[0]}
 
 
 def bifrost_single(
@@ -909,6 +1011,8 @@ def bifrost_single(
     sample, analyzers, triplet_events, norm_monitor, logs = load_precompute(
         filename, named_components, is_simulated
     )
+    if 'time' in norm_monitor.sizes:
+        norm_monitor = norm_monitor.sum('time')
 
     data = one_setting(
         sample,
@@ -925,3 +1029,31 @@ def bifrost_single(
         data['logs'] = logs
 
     return data
+
+
+def bifrost_to_nxspe(
+    *,
+    output: NXspeFileName,
+    filename: NeXusFileName | None = None,
+    events: NormWavelengthEvents | None = None,
+    **kwargs,
+):
+    from sciline import Pipeline
+
+    from ..types import NXspeFileNames
+    from .io import providers as io_providers
+
+    if filename is None and events is None:
+        raise ValueError("Provide events, or filename to read and reduce file")
+    if events is None:
+        reduced = bifrost(filename, **kwargs)
+        events = reduced['norm_events']
+
+    pipeline = Pipeline(
+        providers=io_providers,
+        params={
+            NXspeFileName: output,
+            NormWavelengthEvents: events,
+        },
+    )
+    return pipeline.compute(NXspeFileNames)

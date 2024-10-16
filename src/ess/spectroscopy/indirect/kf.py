@@ -6,6 +6,7 @@ from ess.spectroscopy.types import (
     AnalyzerDetectorVector,
     AnalyzerOrientation,
     AnalyzerPosition,
+    ArcNumber,
     DetectorFrameTime,
     DetectorGeometricA4,
     DetectorPosition,
@@ -216,6 +217,24 @@ def sample_frame_time(
     return detector_time - secondary_time
 
 
+def bifrost_arc_number(ef: FinalEnergy) -> ArcNumber:
+    """Determine arc index from final energy for a pixel or event
+
+    The BIFROST analyzers are set to diffract mean energies of
+    2.7, 3.2, 3.8, 4.4, and 5.0 meV, but the actual final energy varies with detector
+    pixel. This routine finds the closest mean energy for every provided final energy
+    and returns its index or 'arc' number according to the mapping
+    {0: 2.7 meV, 1: 3.2 meV, 2: 3.8 meV, 3: 4.4 meV, 4: 5.0 meV}
+    This can allow for efficient separation of the events corresponding to each arc.
+    """
+    from scipp import round, scalar
+
+    # mean_energies = array(values=[2.7, 3.2, 3.8, 4.4, 5.0], dims=['arc'], unit='meV')
+    min_energy = scalar(2.7, unit='meV')
+    mean_step = scalar(0.575, unit='meV')
+    return round((ef - min_energy) / mean_step).to(dtype='int')
+
+
 providers = (
     sample_analyzer_vector,
     analyzer_detector_vector,
@@ -227,4 +246,5 @@ providers = (
     sample_frame_time,
     final_energy,
     detector_geometric_a4,
+    bifrost_arc_number,
 )

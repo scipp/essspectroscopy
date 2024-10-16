@@ -6,15 +6,24 @@ from scipp import DataArray
 from ..types import (
     FrameTimeMonitor,
     IncidentSlowness,
+    MonitorName,
     MonitorNormalisation,
+    MonitorPosition,
+    NeXusFileName,
+    NormWavelengthEvents,
     PrimaryFocusDistance,
     PrimaryFocusTime,
     PrimarySpectrometerObject,
+    SlothMonitor,
     SlownessMonitor,
     SourceFrequency,
     SourceMonitorFlightTime,
     SourceMonitorPathLength,
+    SourcePosition,
     WallTimeMonitor,
+    WavelengthBins,
+    WavelengthEvents,
+    WavelengthMonitor,
 )
 
 
@@ -30,6 +39,51 @@ def incident_monitor_normalization(
     return lookup(monitor, dim=coords[0])[slowness]
 
 
+def monitor_position(file: NeXusFileName, monitor: MonitorName) -> MonitorPosition:
+    """Extract the position of the named monitor from a NeXus file"""
+    from scippnexus import File, compute_positions
+
+    with File(file) as data:
+        return compute_positions(data['entry/instrument'][monitor][...])['position']
+
+
+def source_monitor_path_length(
+    file: NeXusFileName, source: SourcePosition, monitor: MonitorPosition
+) -> SourceMonitorPathLength:
+    """Compute the primary spectrometer path length from source to monitor positions
+
+    Note:
+        This *requires* that the instrument group *is sorted* along the beam path.
+        HDF5 group entries are sorted alphabetically, so you should ensure that
+        the NeXus file was constructed with this in mind.
+    """
+    from scipp import concat, dot, sqrt, sum
+    from scippnexus import File, NXguide, compute_positions
+
+    with File(file) as data:
+        positions = [
+            compute_positions(v[...])['position']
+            for v in data['entry/instrument'][NXguide].values()
+        ]
+
+    def vector_length(vector):
+        return sqrt(dot(vector, vector))
+
+    # Find the closest guide to the monitor position, ignoring the possibility that
+    # a guide could be _beyond_ the monitor _and_ closest :(
+    closest = 0
+    distance = vector_length(source - monitor)
+    for i, position in enumerate(positions):
+        d = vector_length(position - monitor)
+        if d < distance:
+            distance = d
+            closest = i
+
+    positions = concat((source, *positions[:closest], monitor), dim='path')
+    diff = positions['path', 1:] - positions['path', :-1]
+    return sum(vector_length(diff))
+
+
 def monitor_pivot_time(
     primary: PrimarySpectrometerObject, length: SourceMonitorPathLength
 ) -> SourceMonitorFlightTime:
@@ -37,6 +91,35 @@ def monitor_pivot_time(
     from choppera.nexus import primary_pivot_time_at
 
     return primary_pivot_time_at(primary, length)
+
+
+def untwist(edges, values):
+    from loguru import logger
+    from numpy import argmin, hstack, min, roll, sum
+
+    diff = edges[1:] - edges[:-1]
+    if min(diff) >= 0:
+        return edges, values
+    if sum(diff < 0) != 1:
+        raise ValueError("Can only untwist once")
+    # FIXME What should be done if the pivot bin has non-zero intensity?
+    #       Options, 1. warn that impossible intensity was recorded (ha!)
+    #       2. split the intensity proportionally to bin width
+    #       3. duplicate the intensity (and full bin width) on both ends
+    #       4. do not split the pivot bin _or_ duplicate it, pick one end only
+
+    pivot = argmin(diff)
+    # The expectation is that the first and last edge are the same, if the pivot is not
+    # on one end. But this is not necessarily the case for McStas-produced frame
+    # monitors? In one case the first and last _bin_ are (nearly) the same
+    if edges[0] != edges[-1]:
+        logger.debug(f"Why don't these match? {edges[:5]} and {edges[-5:]}")
+    if edges[0] == edges[-1]:
+        edges = edges[:-1]
+    edges, values = (roll(x, -pivot) for x in (edges, values))
+    if len(edges) == len(values):
+        edges = hstack([edges, edges[-1] + diff[pivot - 1]])
+    return edges, values
 
 
 def monitor_wall_time(
@@ -63,18 +146,22 @@ def monitor_wall_time(
         The same intensities with independent axis converted to the likely time since
         neutron-producing proton pulse
     """
-    from choppera.nexus import unwrap
+    from choppera.nexus import unwrap, unwrap_histogram
 
-    coords = list(monitor.coords)
-    if len(coords) != 1:
-        raise ValueError(f'Monitor expected to have exactly 1 coordinate, has {coords}')
-    frame = coords[0]
+    frame = 'frame_time'
+    if frame not in monitor.coords:
+        raise RuntimeError(f'A FrameTimeMonitor must have coordinate "{frame}"')
     wall = 'wall_time'
     names = {frame: wall}
-    return DataArray(
-        monitor.data.rename(names),
-        coords={wall: unwrap(monitor.coords[frame], frequency, least).rename(names)},
-    )
+    if monitor.sizes[frame] + 1 == monitor.coords[frame].size:
+        coord, values = unwrap_histogram(
+            monitor.coords[frame], monitor.data, frequency, least
+        )
+    else:
+        values = monitor.data
+        coord = unwrap(monitor.coord[frame], frequency, least)
+
+    return DataArray(values.rename(names), coords={wall: coord.rename(names)})
 
 
 def monitor_slowness(
@@ -105,18 +192,131 @@ def monitor_slowness(
         The same intensities with independent axis converted to the inverse velocity
         of the neutrons, which scales linearly with wall time
     """
-    coords = list(monitor.coords)
-    if len(coords) != 1:
-        raise ValueError(f'Monitor expected to have exactly 1 coordinate, has {coords}')
-    wall = coords[0]
+    from ..utils import in_same_unit
+
+    wall = 'wall_time'
+    if wall not in monitor.coords:
+        raise RuntimeError(f'A WallTimeMonitor must have coordinate "{wall}"')
     slow = 'slowness'
     names = {wall: slow}
-    slowness = (
-        ((monitor.coords[wall] - focus) / (length - distance))
-        .rename(names)
-        .to(unit='s/m')
-    )
+    wall_time = monitor.coords[wall]
+    duration = wall_time - in_same_unit(focus, to=wall_time)
+    slowness = (duration / (length - distance)).rename(names).to(unit='s/m')
     return DataArray(monitor.data.rename(names), coords={slow: slowness})
+
+
+def monitor_wavelength(monitor: SlownessMonitor) -> WavelengthMonitor:
+    """Convert the independent 'slowness' coordinate of a histogram DataArray to the
+    equivalent wavelength
+
+    Parameters
+    ----------
+    monitor:
+        A histogram beam monitor which has been converted from recorded 'frame time'
+        to inverse neutron velocity
+
+    Returns
+    -------
+    :
+        The same intensities with independent axis converted to wavelength
+    """
+    from scipp.constants import Planck, neutron_mass
+
+    c = Planck / neutron_mass
+    slow = 'slowness'
+    # wavelength = 'incident_wavelength'
+    if slow not in monitor.coords:
+        raise RuntimeError(f'A SlownessMonitor must have the coordinate "{slow}"')
+
+    def converter(slowness):
+        return (c * slowness).to(unit='angstrom')
+
+    # names = {slow: wavelength}
+    converted = monitor.transform_coords(incident_wavelength=converter)
+    return converted
+
+
+def monitor_sloth(
+    primary: PrimarySpectrometerObject, monitor: SlownessMonitor
+) -> SlothMonitor:
+    """Convert the independent 'slowness' coordinate of a histogram DataArray to the
+    equivalent sloth, which is -- equivalently -- normalised slowness, normalised
+    inverse velocity, or normalised (incident) wavelength
+
+    Parameters
+    ----------
+    primary:
+        The primary spectrometer object describing the choppers and guide setting(s)
+    monitor:
+        A histogram beam monitor which has been converted from recorded 'frame time' to
+        inverse neutron velocity
+
+    Returns
+    -------
+    :
+        The same intensities with independent axis converted to the sloth,
+        which is the normalised slowness, inverse velocity, and incident wavelength
+    """
+    from choppera.nexus import primary_slowness
+    from scipp import max, min
+
+    from ..utils import in_same_unit
+
+    slow = 'slowness'
+    if slow not in monitor.coords:
+        raise RuntimeError(f'A SlownessMonitor must have the coordinate "{slow}"')
+    sloth = 'sloth'
+    names = {slow: sloth}
+    min_max = in_same_unit(primary_slowness(primary), to=monitor.coords[slow])
+    normed = (
+        (monitor.coords[slow] - min(min_max)) / (max(min_max) - min(min_max))
+    ).rename(names)
+    return DataArray(monitor.data.rename(names), coords={sloth: normed})
+
+
+def normalise(
+    events: WavelengthEvents,
+    monitor: WavelengthMonitor,
+    edges: WavelengthBins,
+) -> NormWavelengthEvents:
+    """Ensure the WavelengthEvents are binned according to the WavelengthBins, then use
+    the WavelengthMonitor as a lookup table to record the per-bin normalization.
+
+    Parameters
+    ----------
+    events
+        Event data which includes a per-event sloth coordinate
+    monitor
+        (Probably) 1-D histogram data with a sloth coordinate
+    edges
+        1-D bin boundaries for the event data
+
+    Returns
+    -------
+    :
+        Event data binned by sloth, with a coordinate that is the per-bin normalization
+    """
+    from scipp import lookup
+
+    dim = 'incident_wavelength'
+    centres = (edges[:-1] + edges[1:]) / 2
+    variances = None
+    if monitor.variances is not None:
+        monitor = monitor.copy()
+        variances = monitor.copy()
+        variances.values = monitor.variances
+        monitor.variances = None
+        variances.variances = None
+    counts = lookup(monitor, dim)[centres]
+    if variances is not None:
+        # Bad form, maybe. But two events with the same sloth bin are normalized
+        # by the same monitor counts -- which has a known uncertainty -- and scipp
+        # refuses to allow lookup on data which has variances defined.
+        counts.variances = (lookup(variances, dim)[centres]).values
+
+    binned = events.bin(**{dim: edges})
+    binned.coords['monitor'] = counts
+    return binned
 
 
 providers = (
@@ -124,4 +324,9 @@ providers = (
     monitor_pivot_time,
     monitor_wall_time,
     monitor_slowness,
+    monitor_wavelength,
+    monitor_sloth,
+    monitor_position,
+    source_monitor_path_length,
+    normalise,
 )
