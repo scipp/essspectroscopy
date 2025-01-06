@@ -160,7 +160,7 @@ def monitor_slowness(
         The same intensities with independent axis converted to the inverse velocity
         of the neutrons, which scales linearly with wall time
     """
-    from ..utils import in_same_unit
+    from ..utils import to_unit_of
 
     wall = 'wall_time'
     if wall not in monitor.coords:
@@ -168,7 +168,7 @@ def monitor_slowness(
     slow = 'slowness'
     names = {wall: slow}
     wall_time = monitor.coords[wall]
-    duration = wall_time - in_same_unit(focus, to=wall_time)
+    duration = wall_time - to_unit_of(focus, to=wall_time)
     slowness = (duration / (length - distance)).rename(names).to(unit='s/m')
     return DataArray(monitor.data.rename(names), coords={slow: slowness})
 
