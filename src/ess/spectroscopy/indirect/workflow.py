@@ -462,15 +462,13 @@ def add_momentum_axes(ki_params, kf_params, events, a3: Variable):
     from sciline import Pipeline
 
     from ..types import (
-        LabMomentumTransfer,
-        LabMomentumTransferX,
-        LabMomentumTransferZ,
+        FinalWavevector,
+        IncidentWavevector,
         SampleTableAngle,
-        TableMomentumTransfer,
-        TableMomentumTransferX,
-        TableMomentumTransferZ,
     )
-    from .conservation import providers
+    from .conservation import graph
+    from .kf import providers as kf_providers
+    from .ki import providers as ki_providers
 
     if a3.size != 1:
         raise ValueError(f'Expected a3 to have 1-entry, not {a3.size}')
@@ -481,19 +479,24 @@ def add_momentum_axes(ki_params, kf_params, events, a3: Variable):
     params.update(kf_params)
     params[SampleTableAngle] = a3
 
-    pipeline = Pipeline(providers, params=params)
-    pipeline[LabMomentumTransfer] = pipeline.get(LabMomentumTransfer).compute()
+    pipeline = Pipeline((*ki_providers, *kf_providers), params=params)
+    res = pipeline.compute((IncidentWavevector, FinalWavevector))
+    ki = res[IncidentWavevector]
+    kf = res[FinalWavevector]
 
-    events.bins.coords['lab_momentum_x'] = pipeline.get(LabMomentumTransferX).compute()
-    events.bins.coords['lab_momentum_z'] = pipeline.get(LabMomentumTransferZ).compute()
+    events.bins.coords['incident_wavevector'] = ki
+    events.coords['final_wavevector'] = kf
+    events = events.transform_coords(
+        ('lab_momentum_x', 'lab_momentum_z', 'table_momentum_x', 'table_momentum_z'),
+        graph=graph,
+        keep_intermediate=False,
+    )
+    del events.bins.coords['incident_wavevector']
+    del events.coords['final_wavevector']
+    events.coords.set_aligned('gravity', True)
 
-    pipeline[TableMomentumTransfer] = pipeline.get(TableMomentumTransfer).compute()
-    events.bins.coords['table_momentum_x'] = (
-        pipeline.get(TableMomentumTransferX).compute().transpose(events.dims)
-    )
-    events.bins.coords['table_momentum_z'] = (
-        pipeline.get(TableMomentumTransferZ).compute().transpose(events.dims)
-    )
+    events.save_hdf5("new.h5")
+    raise RuntimeError("abort")
     return events
 
 

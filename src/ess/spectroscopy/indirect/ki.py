@@ -380,25 +380,24 @@ def incident_wavelength(slowness: IncidentSlowness) -> IncidentWavelength:
     return (slowness * Planck / neutron_mass).to(unit='angstrom')
 
 
-def incident_wavenumber(slowness: IncidentSlowness) -> IncidentWavenumber:
+def incident_wavenumber(incident_slowness: IncidentSlowness) -> IncidentWavenumber:
     """Calculate the incident wave number from the incident slowness for each neutron"""
     from scipp.constants import hbar, neutron_mass
 
-    return (neutron_mass / hbar / slowness).to(unit='1/angstrom')
+    return (neutron_mass / hbar / incident_slowness).to(unit='1/angstrom')
 
 
+# TODO remove and use beam_aligned_unit_vectors
 def incident_direction() -> IncidentDirection:
     """Return the incident neutron direction in the laboratory frame"""
-    from scipp import vector
-
-    return vector([0, 0, 1.0])
+    return sc.vector([0, 0, 1.0])
 
 
 def incident_wavevector(
-    ki_magnitude: IncidentWavenumber, direction: IncidentDirection
+    incident_wavenumber: IncidentWavenumber, beam_aligned_unit_z: IncidentDirection
 ) -> IncidentWavevector:
     """Find the incident wavevector from its magnitude and direction"""
-    return ki_magnitude * direction
+    return incident_wavenumber * beam_aligned_unit_z
 
 
 def incident_energy(ki: IncidentWavenumber) -> IncidentEnergy:
@@ -406,6 +405,16 @@ def incident_energy(ki: IncidentWavenumber) -> IncidentEnergy:
     from scipp.constants import hbar, neutron_mass
 
     return ((hbar * hbar / 2 / neutron_mass) * ki * ki).to(unit='meV')
+
+
+def graph():
+    # TODO
+    return {
+        'incident_slowness': incident_slowness,
+        'incident_wavenumber': incident_wavenumber,
+        'incident_wavevector': incident_wavevector,
+        'sample_time': unwrap_sample_time,
+    }
 
 
 providers = (

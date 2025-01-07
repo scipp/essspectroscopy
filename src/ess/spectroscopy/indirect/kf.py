@@ -216,6 +216,10 @@ def sample_frame_time(
     return detector_time - secondary_time
 
 
+def graph():
+    return {}
+
+
 providers = (
     sample_analyzer_vector,
     analyzer_detector_vector,
