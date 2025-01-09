@@ -29,17 +29,6 @@ from ..types import (
 PIXEL_NAME = 'detector_number'
 
 
-def _load_all(group, obj_type):
-    """Helper to find and load all subgroups of a specific scippnexus type"""
-    return {name: obj[...] for name, obj in group[obj_type].items()}
-
-
-def _load_named(group, obj_type, names):
-    """Helper to find and load all subgroups of a specific scippnexus type with
-    group name in an allowed set"""
-    return {name: obj[...] for name, obj in group[obj_type].items() if name in names}
-
-
 def ess_source_frequency():
     """Input for a sciline workflow, returns the ESS source frequency of 14 Hz"""
     from scipp import scalar
