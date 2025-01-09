@@ -10,6 +10,7 @@ import scippnexus as snx
 from loguru import logger
 from scipp import Variable
 
+from ..source import ESS_SOURCE
 from ..types import (
     Analyzers,
     Choppers,
@@ -29,41 +30,9 @@ from ..types import (
 PIXEL_NAME = 'detector_number'
 
 
-def _load_all(group, obj_type):
-    """Helper to find and load all subgroups of a specific scippnexus type"""
-    return {name: obj[...] for name, obj in group[obj_type].items()}
-
-
-def _load_named(group, obj_type, names):
-    """Helper to find and load all subgroups of a specific scippnexus type with
-    group name in an allowed set"""
-    return {name: obj[...] for name, obj in group[obj_type].items() if name in names}
-
-
-def ess_source_frequency():
-    """Input for a sciline workflow, returns the ESS source frequency of 14 Hz"""
-    from scipp import scalar
-
-    return scalar(14.0, unit='Hz')
-
-
-def ess_source_period():
-    """Input for a sciline workflow, returns the ESS source period of 1/(14 Hz)"""
-    return (1 / ess_source_frequency()).to(unit='ns')
-
-
 def ess_source_delay():
     """Input for a sciline workflow, returns per-wavelength source delays of 0 s"""
-    from scipp import array
-
-    return array(values=[0, 0.0], dims=['wavelength'], unit='sec', dtype='float64')
-
-
-def ess_source_duration():
-    """Input for a sciline workflow, returns source pulse duration of 3 msec"""
-    from scipp import scalar
-
-    return scalar(3.0, unit='msec').to(unit='sec')
+    return sc.array(values=[0, 0.0], dims=['wavelength'], unit='sec', dtype='float64')
 
 
 def ess_source_velocities():
@@ -83,9 +52,7 @@ def ess_source_velocities():
     :
         A 1-D scipp Variable with values=[100, 10000] m/s
     """
-    from scipp import array
-
-    return array(values=[100, 1e4], dims=['wavelength'], unit='m/s')
+    return sc.array(values=[100, 1e4], dims=['wavelength'], unit='m/s')
 
 
 def convert_simulated_time_to_frame_time(data):
@@ -117,7 +84,7 @@ def convert_simulated_time_to_frame_time(data):
         A copy of the data with extra per-event coordinate frame_time
     """
     graph = {
-        'frame_time': lambda event_time_offset: event_time_offset % ess_source_period()
+        'frame_time': lambda event_time_offset: event_time_offset % ESS_SOURCE.period
     }
     return data.transform_coords(
         'frame_time', graph=graph, rename_dims=False, keep_intermediate=False
@@ -281,9 +248,9 @@ def find_sample_detector_flight_time(sample, analyzers, detector_positions):
         AnalyzerOrientation: analyzers['transform'].data,
         ReciprocalLatticeSpacing: 2 * np.pi / analyzers['d_spacing'].data,
     }
-    return params, Pipeline(kf_providers, params=params).get(
+    return params, Pipeline(kf_providers, params=params).compute(
         SampleDetectorFlightTime
-    ).compute().to(unit='ms')
+    ).to(unit='ms')
 
 
 def get_triplet_events(triplets: Iterable[sc.DataArray]):
@@ -315,7 +282,7 @@ def get_sample_events(triplet_events, sample_detector_flight_times):
     for coord in ('position', 'x_pixel_offset', 'y_pixel_offset'):
         del events.coords[coord]
     events.bins.coords['frame_time'] -= sample_detector_flight_times.to(unit='ns')
-    events.bins.coords['frame_time'] %= ess_source_period()
+    events.bins.coords['frame_time'] %= ESS_SOURCE.period
     return events
 
 
@@ -333,8 +300,6 @@ def get_unwrapped_events(
         SampleName,
         SampleTime,
         SourceDelay,
-        SourceDuration,
-        SourceFrequency,
         SourceName,
         SourceVelocities,
     )
@@ -345,20 +310,18 @@ def get_unwrapped_events(
         SampleName: sample_name,
         SourceName: source_name,
         SourceDelay: ess_source_delay(),
-        SourceDuration: ess_source_duration(),
-        SourceFrequency: ess_source_frequency(),
         SourceVelocities: ess_source_velocities(),
         SampleFrameTime: sample_events.data.bins.coords['frame_time'],
         FocusComponentNames: focus_components,
+        **ESS_SOURCE.to_pipeline_params(),
     }
     pipeline = Pipeline(ki_providers, params=params)
-    primary = pipeline.get(PrimarySpectrometerObject).compute()
-    pipeline[PrimarySpectrometerObject] = primary
-    params[PrimarySpectrometerObject] = primary
+    results = pipeline.compute((PrimarySpectrometerObject, SampleTime))
+    params[PrimarySpectrometerObject] = results[PrimarySpectrometerObject]
 
     events = sample_events.copy()
-    events.bins.coords['frame_time'] = pipeline.get(SampleTime).compute()
-    return params, events, primary
+    events.bins.coords['frame_time'] = results[SampleTime]
+    return params, events
 
 
 def get_normalization_monitor(monitors, monitor_component, collapse: bool = False):
@@ -418,9 +381,7 @@ def get_energy_axes(ki_params, kf_params):
     from ..types import (
         EnergyTransfer,
         FinalEnergy,
-        FinalWavenumber,
         IncidentEnergy,
-        IncidentWavenumber,
     )
     from .conservation import providers
 
@@ -428,12 +389,10 @@ def get_energy_axes(ki_params, kf_params):
     params.update(ki_params)
     params.update(kf_params)
     pipeline = Pipeline(providers, params=params)
-    pipeline[IncidentWavenumber] = pipeline.get(IncidentWavenumber).compute()
-    pipeline[FinalWavenumber] = pipeline.get(FinalWavenumber).compute()
-    ei = pipeline.get(IncidentEnergy).compute()
-    en = pipeline.get(EnergyTransfer).compute()
-    ef = pipeline.get(FinalEnergy).compute()
-    return ei, en, ef
+
+    keys = (IncidentEnergy, EnergyTransfer, FinalEnergy)
+    energies = pipeline.compute(keys)
+    return tuple(energies[k] for k in keys)
 
 
 def add_momentum_axes(ki_params, kf_params, events, a3: Variable):
@@ -462,11 +421,9 @@ def add_momentum_axes(ki_params, kf_params, events, a3: Variable):
     from sciline import Pipeline
 
     from ..types import (
-        LabMomentumTransfer,
         LabMomentumTransferX,
         LabMomentumTransferZ,
         SampleTableAngle,
-        TableMomentumTransfer,
         TableMomentumTransferX,
         TableMomentumTransferZ,
     )
@@ -481,18 +438,16 @@ def add_momentum_axes(ki_params, kf_params, events, a3: Variable):
     params.update(kf_params)
     params[SampleTableAngle] = a3
 
-    pipeline = Pipeline(providers, params=params)
-    pipeline[LabMomentumTransfer] = pipeline.get(LabMomentumTransfer).compute()
-
-    events.bins.coords['lab_momentum_x'] = pipeline.get(LabMomentumTransferX).compute()
-    events.bins.coords['lab_momentum_z'] = pipeline.get(LabMomentumTransferZ).compute()
-
-    pipeline[TableMomentumTransfer] = pipeline.get(TableMomentumTransfer).compute()
-    events.bins.coords['table_momentum_x'] = (
-        pipeline.get(TableMomentumTransferX).compute().transpose(events.dims)
+    names_and_keys = (
+        ('lab_momentum_x', LabMomentumTransferX),
+        ('lab_momentum_z', LabMomentumTransferZ),
+        ('table_momentum_x', TableMomentumTransferX),
+        ('table_momentum_z', TableMomentumTransferZ),
     )
-    events.bins.coords['table_momentum_z'] = (
-        pipeline.get(TableMomentumTransferZ).compute().transpose(events.dims)
+    pipeline = Pipeline(providers, params=params)
+    momentum = pipeline.compute(tuple(k for _, k in names_and_keys))
+    events.bins.coords.update(
+        {n: momentum[k].transpose(events.dims) for n, k in names_and_keys}
     )
     return events
 
@@ -528,7 +483,6 @@ def add_wavelength_axes(ki_params, kf_params, events, monitor, monitor_name):
 
     from ..types import (
         FrameTimeMonitor,
-        # SlownessMonitor,
         IncidentWavelength,
         MonitorName,
         WavelengthMonitor,
@@ -540,13 +494,13 @@ def add_wavelength_axes(ki_params, kf_params, events, monitor, monitor_name):
     params = {
         MonitorName: monitor_name,
         FrameTimeMonitor: monitor,
+        **ki_params,
+        **kf_params,
     }
-    params.update(ki_params)
-    params.update(kf_params)
     pipeline = Pipeline(monitor_providers + ki_providers + kf_providers, params=params)
-    wavelength_monitor = pipeline.compute(WavelengthMonitor)
-    events.bins.coords['incident_wavelength'] = pipeline.compute(IncidentWavelength)
-    return events, wavelength_monitor
+    results = pipeline.compute((WavelengthMonitor, IncidentWavelength))
+    events.bins.coords['incident_wavelength'] = results[IncidentWavelength]
+    return events, results[WavelengthMonitor]
 
 
 def get_geometric_a4(kf_params):
@@ -770,7 +724,7 @@ def one_setting(
         sample, analyzers, detector_positions
     )
     events = get_sample_events(triplet_events, sample_detector_flight_time)
-    ki_params, unwrapped_events, primary = get_unwrapped_events(
+    ki_params, unwrapped_events = get_unwrapped_events(
         filename, names['source'], names['sample'], events, names['focus']
     )
     ei, en, ef = get_energy_axes(ki_params, kf_params)
