@@ -10,6 +10,7 @@ import scippnexus as snx
 from loguru import logger
 from scipp import Variable
 
+from ..source import ESS_SOURCE
 from ..types import (
     Analyzers,
     Choppers,
@@ -29,30 +30,9 @@ from ..types import (
 PIXEL_NAME = 'detector_number'
 
 
-def ess_source_frequency():
-    """Input for a sciline workflow, returns the ESS source frequency of 14 Hz"""
-    from scipp import scalar
-
-    return scalar(14.0, unit='Hz')
-
-
-def ess_source_period():
-    """Input for a sciline workflow, returns the ESS source period of 1/(14 Hz)"""
-    return (1 / ess_source_frequency()).to(unit='ns')
-
-
 def ess_source_delay():
     """Input for a sciline workflow, returns per-wavelength source delays of 0 s"""
-    from scipp import array
-
-    return array(values=[0, 0.0], dims=['wavelength'], unit='sec', dtype='float64')
-
-
-def ess_source_duration():
-    """Input for a sciline workflow, returns source pulse duration of 3 msec"""
-    from scipp import scalar
-
-    return scalar(3.0, unit='msec').to(unit='sec')
+    return sc.array(values=[0, 0.0], dims=['wavelength'], unit='sec', dtype='float64')
 
 
 def ess_source_velocities():
@@ -72,9 +52,7 @@ def ess_source_velocities():
     :
         A 1-D scipp Variable with values=[100, 10000] m/s
     """
-    from scipp import array
-
-    return array(values=[100, 1e4], dims=['wavelength'], unit='m/s')
+    return sc.array(values=[100, 1e4], dims=['wavelength'], unit='m/s')
 
 
 def convert_simulated_time_to_frame_time(data):
@@ -106,7 +84,7 @@ def convert_simulated_time_to_frame_time(data):
         A copy of the data with extra per-event coordinate frame_time
     """
     graph = {
-        'frame_time': lambda event_time_offset: event_time_offset % ess_source_period()
+        'frame_time': lambda event_time_offset: event_time_offset % ESS_SOURCE.period
     }
     return data.transform_coords(
         'frame_time', graph=graph, rename_dims=False, keep_intermediate=False
@@ -304,7 +282,7 @@ def get_sample_events(triplet_events, sample_detector_flight_times):
     for coord in ('position', 'x_pixel_offset', 'y_pixel_offset'):
         del events.coords[coord]
     events.bins.coords['frame_time'] -= sample_detector_flight_times.to(unit='ns')
-    events.bins.coords['frame_time'] %= ess_source_period()
+    events.bins.coords['frame_time'] %= ESS_SOURCE.period
     return events
 
 
@@ -322,8 +300,6 @@ def get_unwrapped_events(
         SampleName,
         SampleTime,
         SourceDelay,
-        SourceDuration,
-        SourceFrequency,
         SourceName,
         SourceVelocities,
     )
@@ -334,11 +310,10 @@ def get_unwrapped_events(
         SampleName: sample_name,
         SourceName: source_name,
         SourceDelay: ess_source_delay(),
-        SourceDuration: ess_source_duration(),
-        SourceFrequency: ess_source_frequency(),
         SourceVelocities: ess_source_velocities(),
         SampleFrameTime: sample_events.data.bins.coords['frame_time'],
         FocusComponentNames: focus_components,
+        **ESS_SOURCE.to_pipeline_params(),
     }
     pipeline = Pipeline(ki_providers, params=params)
     results = pipeline.compute((PrimarySpectrometerObject, SampleTime))
