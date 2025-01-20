@@ -354,9 +354,9 @@ def incident_slowness(
         The inverse of the velocity for each neutron, that is its 'slowness', which
         is proportional to wavelength
     """
-    from ..utils import in_same_unit
+    from ..utils import to_unit_of
 
-    tof = time - in_same_unit(focus, to=time)
+    tof = time - to_unit_of(focus, to=time)
     slowness = tof / (length - distance)  # slowness _is_ inverse velocity
     return slowness
 
