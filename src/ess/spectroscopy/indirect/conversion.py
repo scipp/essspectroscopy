@@ -173,6 +173,7 @@ def add_inelastic_coordinates(
             # These are inputs, but we want to preserve them
             'a3',
             'a4',
+            'final_energy',  # Needed by SQW
         ],
         graph=graph,
         keep_aliases=False,
