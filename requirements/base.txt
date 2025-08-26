@@ -19,7 +19,7 @@ email-validator==2.2.0
     # via scippneutron
 essreduce==25.7.1
     # via -r base.in
-fonttools==4.59.0
+fonttools==4.59.1
     # via matplotlib
 graphviz==0.21
     # via -r base.in
@@ -29,7 +29,7 @@ h5py==3.14.0
     #   scippnexus
 idna==3.10
     # via email-validator
-kiwisolver==1.4.8
+kiwisolver==1.4.9
     # via matplotlib
 lazy-loader==0.4
     # via
@@ -57,7 +57,7 @@ packaging==25.0
     # via
     #   lazy-loader
     #   matplotlib
-pandas==2.3.1
+pandas==2.3.2
     # via -r base.in
 pillow==11.3.0
     # via matplotlib
@@ -79,7 +79,7 @@ python-dateutil==2.9.0.post0
     #   scippnexus
 pytz==2025.2
     # via pandas
-sciline==25.5.2
+sciline==25.8.0
     # via
     #   -r base.in
     #   essreduce
@@ -106,9 +106,9 @@ scipy==1.16.1
     #   tof
 six==1.17.0
     # via python-dateutil
-tof==25.5.0
+tof==25.8.0
     # via -r base.in
-typing-extensions==4.14.1
+typing-extensions==4.15.0
     # via
     #   pydantic
     #   pydantic-core

@@ -44,6 +44,7 @@ dynamic = ["version"]
 
 [project.optional-dependencies]
 test = [
+    "pace_neutrons>=0.4.0",
     "pooch>=1.5",
     "pytest>=7.0",
 ]
