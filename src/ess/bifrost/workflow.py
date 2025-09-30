@@ -16,6 +16,7 @@ from ess.spectroscopy.indirect.normalization import providers as normalisation_p
 from ess.spectroscopy.indirect.time_of_flight import TofWorkflow
 from ess.spectroscopy.types import (
     BeamlineWithSpectrometerCoords,
+    BraggPeakMonitor,
     DetectorData,
     FrameMonitor0,
     FrameMonitor1,
@@ -74,7 +75,13 @@ def BifrostSimulationWorkflow(
     """
     workflow = TofWorkflow(
         run_types=(SampleRun,),
-        monitor_types=(FrameMonitor0, FrameMonitor1, FrameMonitor2, FrameMonitor3),
+        monitor_types=(
+            FrameMonitor0,
+            FrameMonitor1,
+            FrameMonitor2,
+            FrameMonitor3,
+            BraggPeakMonitor,
+        ),
     )
     for provider in _SIMULATION_PROVIDERS:
         workflow.insert(provider)
@@ -96,7 +103,13 @@ def BifrostWorkflow(
     """Data reduction workflow for BIFROST."""
     workflow = TofWorkflow(
         run_types=(SampleRun,),
-        monitor_types=(FrameMonitor0, FrameMonitor1, FrameMonitor2, FrameMonitor3),
+        monitor_types=(
+            FrameMonitor0,
+            FrameMonitor1,
+            FrameMonitor2,
+            FrameMonitor3,
+            BraggPeakMonitor,
+        ),
     )
     # TODO change to use non-simulation providers
     for provider in _SIMULATION_PROVIDERS:

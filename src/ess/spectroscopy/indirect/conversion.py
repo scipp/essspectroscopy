@@ -12,12 +12,14 @@ from scippneutron.conversion.tof import (
 
 from ..types import (
     BeamlineWithSpectrometerCoords,
+    BraggPeakMonitor,
     CalibratedBeamline,
     DetectorTofData,
     EnergyData,
     GravityVector,
     InelasticCoordTransformGraph,
     MonitorCoordTransformGraph,
+    MonitorScatteringData,
     MonitorTofData,
     MonitorType,
     PrimarySpecCoordTransformGraph,
@@ -224,10 +226,12 @@ def add_spectrometer_coords(
     )
 
 
-def monitor_coordinate_transformation_graph() -> MonitorCoordTransformGraph:
+def monitor_coordinate_transformation_graph() -> MonitorCoordTransformGraph[
+    MonitorType
+]:
     from scippneutron.conversion.graph import beamline, tof
 
-    return MonitorCoordTransformGraph(
+    return MonitorCoordTransformGraph[MonitorType](
         {
             **beamline.beamline(scatter=False),
             **tof.elastic_wavelength(start='tof'),
@@ -235,8 +239,24 @@ def monitor_coordinate_transformation_graph() -> MonitorCoordTransformGraph:
     )
 
 
+def monitor_coordinate_transformation_graph_bragg_peak() -> MonitorCoordTransformGraph[
+    BraggPeakMonitor
+]:
+    from scippneutron.conversion.graph import beamline, tof
+
+    # The Bragg peak monitor is at an angle after the sample, so we take
+    # scattering into account and can allow computing more coords than otherwise.
+    return MonitorCoordTransformGraph[BraggPeakMonitor](
+        {
+            **beamline.beamline(scatter=True),
+            **tof.elastic(start='tof'),
+        }
+    )
+
+
 def add_monitor_wavelength_coords(
-    monitor: MonitorTofData[RunType, MonitorType], graph: MonitorCoordTransformGraph
+    monitor: MonitorTofData[RunType, MonitorType],
+    graph: MonitorCoordTransformGraph[MonitorType],
 ) -> WavelengthMonitor[RunType, MonitorType]:
     return WavelengthMonitor[RunType, MonitorType](
         monitor.transform_coords(
@@ -245,10 +265,26 @@ def add_monitor_wavelength_coords(
     )
 
 
+def add_monitor_scattering_coords(
+    monitor: MonitorTofData[RunType, BraggPeakMonitor],
+    graph: MonitorCoordTransformGraph[BraggPeakMonitor],
+) -> MonitorScatteringData[RunType, BraggPeakMonitor]:
+    return MonitorScatteringData[RunType, BraggPeakMonitor](
+        monitor.transform_coords(
+            ['dspacing', 'two_theta', 'wavelength'],
+            graph=graph,
+            keep_intermediate=False,
+            keep_aliases=False,
+        )
+    )
+
+
 providers = (
     add_inelastic_coordinates,
+    add_monitor_scattering_coords,
     add_monitor_wavelength_coords,
     add_spectrometer_coords,
     inelastic_coordinate_transformation_graph_at_sample,
     monitor_coordinate_transformation_graph,
+    monitor_coordinate_transformation_graph_bragg_peak,
 )

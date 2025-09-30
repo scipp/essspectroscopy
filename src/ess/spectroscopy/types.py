@@ -39,6 +39,7 @@ FrameMonitor0 = reduce_t.FrameMonitor0
 FrameMonitor1 = reduce_t.FrameMonitor1
 FrameMonitor2 = reduce_t.FrameMonitor2
 FrameMonitor3 = reduce_t.FrameMonitor3
+BraggPeakMonitor = NewType('BraggPeakMonitor', int)
 
 # Type vars
 
@@ -49,6 +50,7 @@ MonitorType = TypeVar(
     FrameMonitor1,
     FrameMonitor2,
     FrameMonitor3,
+    BraggPeakMonitor,
 )
 
 # Time-of-flight types
@@ -99,7 +101,8 @@ class InstrumentAngle(sciline.Scope[RunType, sc.DataArray], sc.DataArray):
     """
 
 
-MonitorCoordTransformGraph = NewType('MonitorCoordTransformGraph', dict)
+class MonitorCoordTransformGraph(sciline.Scope[MonitorType, dict], dict):
+    """Coordinate transformation graph for a monitor."""
 
 
 NXspeFileName = NewType('NXspeFileName', str)
@@ -113,5 +116,10 @@ class SecondarySpecCoordTransformGraph(sciline.Scope[RunType, dict], dict): ...
 
 
 class WavelengthMonitor(
+    sciline.Scope[RunType, MonitorType, sc.DataArray], sc.DataArray
+): ...
+
+
+class MonitorScatteringData(
     sciline.Scope[RunType, MonitorType, sc.DataArray], sc.DataArray
 ): ...

@@ -80,8 +80,13 @@ def monitor_time_of_flight_data(
     :func:`ess.reduce.time_of_flight.monitor_time_of_flight_data`
     for indirect geometry spectrometers.
     """
+
+    if monitor_data.bins is None:
+        # Handle specific naming convention for histogram monitors.
+        monitor_data = monitor_data.rename(t='tof')
+
     result = reduce_time_of_flight.eto_to_tof.monitor_time_of_flight_data(
-        monitor_data=monitor_data.rename(t='tof'),
+        monitor_data=monitor_data,
         lookup=lookup,
         ltotal=ltotal,
         pulse_stride_offset=pulse_stride_offset,
@@ -91,10 +96,10 @@ def monitor_time_of_flight_data(
 
 def compute_monitor_ltotal(
     monitor_data: MonitorData[RunType, MonitorType],
-    coord_transform_graph: MonitorCoordTransformGraph,
+    coord_transform_graph: MonitorCoordTransformGraph[MonitorType],
 ) -> MonitorLtotal[RunType, MonitorType]:
     """Compute the path length from the source to the monitor."""
-    return MonitorLtotal[RunType, MonitorType](
+    res = MonitorLtotal[RunType, MonitorType](
         monitor_data.transform_coords(
             'Ltotal',
             graph=coord_transform_graph,
@@ -103,6 +108,7 @@ def compute_monitor_ltotal(
             rename_dims=False,
         ).coords['Ltotal']
     )
+    return res
 
 
 providers = (
