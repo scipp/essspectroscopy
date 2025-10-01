@@ -87,14 +87,14 @@ class EnergyData(sciline.Scope[RunType, sc.DataArray], sc.DataArray): ...
 InelasticCoordTransformGraph = NewType('InelasticCoordTransformGraph', dict)
 
 
-class SampleAngle(sciline.Scope[RunType, sc.DataArray], sc.DataArray):
+class SampleRotation(sciline.Scope[RunType, sc.DataArray], sc.DataArray):
     """Rotation angle of the sample, possibly as a function of time.
 
     For BIFROST, this is angle "a3".
     """
 
 
-class InstrumentAngle(sciline.Scope[RunType, sc.DataArray], sc.DataArray):
+class InstrumentRotation(sciline.Scope[RunType, sc.DataArray], sc.DataArray):
     """Rotation angle of the instrument, possibly as a function of time.
 
     For BIFROST, this is angle "a4".

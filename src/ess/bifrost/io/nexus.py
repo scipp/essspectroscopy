@@ -10,13 +10,13 @@ import scippnexus as snx
 
 from ess.spectroscopy.types import (
     Analyzer,
-    InstrumentAngle,
+    InstrumentRotation,
     NeXusClass,
     NeXusComponentLocationSpec,
     NeXusDetectorName,
     NeXusFileSpec,
     RunType,
-    SampleAngle,
+    SampleRotation,
 )
 
 
@@ -26,16 +26,16 @@ def moderator_class_for_source() -> NeXusClass[snx.NXsource]:
     return NeXusClass[snx.NXsource](snx.NXmoderator)
 
 
-def load_sample_angle(
+def load_sample_rotation(
     file_spec: NeXusFileSpec[RunType],
-) -> SampleAngle[RunType]:
-    return SampleAngle[RunType](_load_experiment_parameter(file_spec, "a3"))
+) -> SampleRotation[RunType]:
+    return SampleRotation[RunType](_load_experiment_parameter(file_spec, "a3"))
 
 
-def load_instrument_angle(
+def load_instrument_rotation(
     file_spec: NeXusFileSpec[RunType],
-) -> InstrumentAngle[RunType]:
-    return InstrumentAngle[RunType](_load_experiment_parameter(file_spec, "a4"))
+) -> InstrumentRotation[RunType]:
+    return InstrumentRotation[RunType](_load_experiment_parameter(file_spec, "a4"))
 
 
 def _load_experiment_parameter(
@@ -108,7 +108,7 @@ def load_analyzer_for_detector(
 
 providers = (
     load_analyzer_for_detector,
-    load_instrument_angle,
-    load_sample_angle,
+    load_instrument_rotation,
+    load_sample_rotation,
     moderator_class_for_source,
 )
