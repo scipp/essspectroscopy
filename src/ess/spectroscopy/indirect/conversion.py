@@ -167,6 +167,7 @@ def add_inelastic_coordinates(
             # TODO pick minimal list of coords
             'energy_transfer',
             'final_energy',
+            'final_wavevector',
             'incident_wavelength',
             'incident_energy',
             'lab_momentum_transfer',
