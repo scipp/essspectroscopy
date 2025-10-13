@@ -85,6 +85,10 @@ class EnergyData(sciline.Scope[RunType, sc.DataArray], sc.DataArray): ...
 InelasticCoordTransformGraph = NewType('InelasticCoordTransformGraph', dict)
 
 
+class IncidentEnergyDetector(sciline.Scope[RunType, sc.DataArray], sc.DataArray):
+    """Detector counts with an incident energy coordinate."""
+
+
 class SampleAngle(sciline.Scope[RunType, sc.DataArray], sc.DataArray):
     """Rotation angle of the sample, possibly as a function of time.
 

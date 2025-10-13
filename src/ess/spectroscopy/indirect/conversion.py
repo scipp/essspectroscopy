@@ -16,6 +16,7 @@ from ..types import (
     DetectorTofData,
     EnergyData,
     GravityVector,
+    IncidentEnergyDetector,
     InelasticCoordTransformGraph,
     MonitorCoordTransformGraph,
     MonitorTofData,
@@ -164,13 +165,7 @@ def add_inelastic_coordinates(
 ) -> EnergyData[RunType]:
     transformed = data.transform_coords(
         [
-            # TODO pick minimal list of coords
             'energy_transfer',
-            'final_energy',
-            'final_wavevector',
-            'incident_wavelength',
-            'incident_energy',
-            'lab_momentum_transfer',
             'sample_table_momentum_transfer',
             # These are inputs, but we want to preserve them
             'a3',
@@ -183,6 +178,27 @@ def add_inelastic_coordinates(
         rename_dims=False,
     )
     return EnergyData[RunType](transformed)
+
+
+def add_incident_energy(
+    data: DetectorTofData[RunType], graph: InelasticCoordTransformGraph
+) -> IncidentEnergyDetector[RunType]:
+    transformed = data.transform_coords(
+        [
+            'incident_energy',
+            # These are inputs, but we need them for binning:
+            'a3',
+            'a4',
+            'final_energy',
+            'final_wavevector',
+        ],
+        graph=graph,
+        keep_aliases=False,
+        keep_inputs=False,
+        keep_intermediate=False,
+        rename_dims=False,
+    )
+    return IncidentEnergyDetector[RunType](transformed)
 
 
 def add_spectrometer_coords(
@@ -249,6 +265,7 @@ def add_monitor_wavelength_coords(
 
 providers = (
     add_inelastic_coordinates,
+    add_incident_energy,
     add_monitor_wavelength_coords,
     add_spectrometer_coords,
     inelastic_coordinate_transformation_graph_at_sample,
