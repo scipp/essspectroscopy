@@ -79,6 +79,9 @@ class DataAtSample(sciline.Scope[RunType, sc.DataArray], sc.DataArray): ...
 class DataGroupedByRotation(sciline.Scope[RunType, sc.DataArray], sc.DataArray): ...
 
 
+EnergyBins = NewType('EnergyBins', sc.Variable)
+
+
 class EnergyData(sciline.Scope[RunType, sc.DataArray], sc.DataArray): ...
 
 
@@ -109,11 +112,16 @@ MonitorCoordTransformGraph = NewType('MonitorCoordTransformGraph', dict)
 NXspeFileName = NewType('NXspeFileName', str)
 NXspeFileNames = NewType('NXspeFileNames', list[NXspeFileName])
 
+OutFilename = NewType("OutFilename", str)
+
 
 class PrimarySpecCoordTransformGraph(sciline.Scope[RunType, dict], dict): ...
 
 
 class SecondarySpecCoordTransformGraph(sciline.Scope[RunType, dict], dict): ...
+
+
+SQWBinSizes = NewType('SQWBinSizes', dict[str, int])
 
 
 class WavelengthMonitor(
