@@ -68,6 +68,9 @@ TimeOfFlightLookupTableFilename = time_of_flight.TimeOfFlightLookupTableFilename
 class Analyzer(sciline.Scope[RunType, sc.DataGroup[Any]], sc.DataGroup[Any]): ...
 
 
+class Analyzers(sciline.Scope[RunType, sc.DataGroup[Any]], sc.DataGroup[Any]): ...
+
+
 class BeamlineWithSpectrometerCoords(
     sciline.Scope[RunType, sc.DataArray], sc.DataArray
 ): ...
@@ -79,16 +82,17 @@ class DataAtSample(sciline.Scope[RunType, sc.DataArray], sc.DataArray): ...
 class DataGroupedByRotation(sciline.Scope[RunType, sc.DataArray], sc.DataArray): ...
 
 
-class DetectorCountsWithQ(sciline.Scope[RunType, sc.DataArray], sc.DataArray): ...
-
-
-ElasticCoordTransformGraph = NewType('ElasticCoordTransformGraph', dict)
+EnergyBins = NewType('EnergyBins', sc.Variable)
 
 
 class EnergyData(sciline.Scope[RunType, sc.DataArray], sc.DataArray): ...
 
 
 InelasticCoordTransformGraph = NewType('InelasticCoordTransformGraph', dict)
+
+
+class IncidentEnergyDetector(sciline.Scope[RunType, sc.DataArray], sc.DataArray):
+    """Detector counts with an incident energy coordinate."""
 
 
 class SampleAngle(sciline.Scope[RunType, sc.DataArray], sc.DataArray):
@@ -111,11 +115,16 @@ MonitorCoordTransformGraph = NewType('MonitorCoordTransformGraph', dict)
 NXspeFileName = NewType('NXspeFileName', str)
 NXspeFileNames = NewType('NXspeFileNames', list[NXspeFileName])
 
+OutFilename = NewType("OutFilename", str)
+
 
 class PrimarySpecCoordTransformGraph(sciline.Scope[RunType, dict], dict): ...
 
 
 class SecondarySpecCoordTransformGraph(sciline.Scope[RunType, dict], dict): ...
+
+
+SQWBinSizes = NewType('SQWBinSizes', dict[str, int])
 
 
 class WavelengthMonitor(
