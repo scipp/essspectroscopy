@@ -3,7 +3,7 @@
 
 """Domain types for spectroscopy."""
 
-from typing import Any, NewType, TypeVar
+from typing import Any, NewType
 
 import sciline
 import scipp as sc
@@ -20,6 +20,7 @@ DetectorPositionOffset = reduce_t.DetectorPositionOffset
 GravityVector = reduce_t.GravityVector
 Filename = reduce_t.Filename
 MonitorData = reduce_t.MonitorData
+MonitorType = reduce_t.MonitorType
 NeXusClass = reduce_t.NeXusClass
 NeXusComponentLocationSpec = reduce_t.NeXusComponentLocationSpec
 NeXusComponent = reduce_t.NeXusComponent
@@ -30,26 +31,8 @@ NeXusMonitorName = reduce_t.NeXusName
 NeXusTransformation = reduce_t.NeXusTransformation
 Position = reduce_t.Position
 PreopenNeXusFile = reduce_t.PreopenNeXusFile
+RunType = reduce_t.RunType
 
-
-SampleRun = reduce_t.SampleRun
-VanadiumRun = reduce_t.VanadiumRun
-
-FrameMonitor0 = reduce_t.FrameMonitor0
-FrameMonitor1 = reduce_t.FrameMonitor1
-FrameMonitor2 = reduce_t.FrameMonitor2
-FrameMonitor3 = reduce_t.FrameMonitor3
-
-# Type vars
-
-RunType = TypeVar("RunType", SampleRun, VanadiumRun)
-MonitorType = TypeVar(
-    "MonitorType",
-    FrameMonitor0,
-    FrameMonitor1,
-    FrameMonitor2,
-    FrameMonitor3,
-)
 
 # Time-of-flight types
 
