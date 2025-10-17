@@ -4,14 +4,15 @@
 
 import sciline
 
-from ess.reduce import time_of_flight as reduce_time_of_flight
-from ess.spectroscopy.indirect.time_of_flight import TofWorkflow
-from ess.spectroscopy.types import (
+from ess.bifrost.types import (
     FrameMonitor1,
     FrameMonitor2,
     FrameMonitor3,
+    PsdMonitor,
     SampleRun,
 )
+from ess.reduce import time_of_flight as reduce_time_of_flight
+from ess.spectroscopy.indirect.time_of_flight import TofWorkflow
 
 from ..cutting import group_by_rotation
 from ..io import nexus
@@ -32,7 +33,7 @@ _PROVIDERS = (
 def BifrostBraggPeakMonitorWorkflow() -> sciline.Pipeline:
     workflow = TofWorkflow(
         run_types=(SampleRun,),
-        monitor_types=(FrameMonitor1, FrameMonitor2, FrameMonitor3),
+        monitor_types=(FrameMonitor1, FrameMonitor2, FrameMonitor3, PsdMonitor),
     )
     # Use the vanilla implementation instead of the indirect geometry one:
     workflow.insert(reduce_time_of_flight.eto_to_tof.detector_time_of_flight_data)
