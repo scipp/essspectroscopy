@@ -17,21 +17,23 @@ from ess.spectroscopy.indirect.time_of_flight import TofWorkflow
 from ess.spectroscopy.types import (
     BeamlineWithSpectrometerCoords,
     DetectorData,
-    FrameMonitor0,
-    FrameMonitor1,
-    FrameMonitor2,
-    FrameMonitor3,
     NeXusData,
     NeXusDetectorName,
     NeXusMonitorName,
     PulsePeriod,
-    SampleRun,
 )
 
 from .cutting import providers as cutting_providers
 from .detector import merge_triplets
 from .detector import providers as detector_providers
 from .io import mcstas, nexus
+from .types import (
+    FrameMonitor1,
+    FrameMonitor2,
+    FrameMonitor3,
+    PsdMonitor,
+    SampleRun,
+)
 
 
 def simulation_default_parameters() -> dict[type, Any]:
@@ -40,6 +42,7 @@ def simulation_default_parameters() -> dict[type, Any]:
         NeXusMonitorName[FrameMonitor1]: '090_frame_1',
         NeXusMonitorName[FrameMonitor2]: '097_frame_2',
         NeXusMonitorName[FrameMonitor3]: '110_frame_3',
+        NeXusMonitorName[PsdMonitor]: '111_psd0_monitor',
         PulsePeriod: 1.0 / sc.scalar(14.0, unit="Hz"),
     }
 
@@ -73,7 +76,7 @@ def BifrostSimulationWorkflow(
     """
     workflow = TofWorkflow(
         run_types=(SampleRun,),
-        monitor_types=(FrameMonitor0, FrameMonitor1, FrameMonitor2, FrameMonitor3),
+        monitor_types=(FrameMonitor1, FrameMonitor2, FrameMonitor3),
     )
     for provider in _SIMULATION_PROVIDERS:
         workflow.insert(provider)
@@ -95,7 +98,7 @@ def BifrostWorkflow(
     """Data reduction workflow for BIFROST."""
     workflow = TofWorkflow(
         run_types=(SampleRun,),
-        monitor_types=(FrameMonitor0, FrameMonitor1, FrameMonitor2, FrameMonitor3),
+        monitor_types=(FrameMonitor1, FrameMonitor2, FrameMonitor3, PsdMonitor),
     )
     # TODO change to use non-simulation providers
     for provider in _SIMULATION_PROVIDERS:

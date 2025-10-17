@@ -12,14 +12,13 @@ from ess.bifrost.data import (
     simulated_elastic_incoherent_with_phonon,
     tof_lookup_table_simulation,
 )
+from ess.bifrost.types import FrameMonitor3, SampleRun
 from ess.spectroscopy.types import (
     DetectorData,
     EnergyData,
     Filename,
-    FrameMonitor3,
     MonitorData,
     NeXusDetectorName,
-    SampleRun,
     TimeOfFlightLookupTable,
     WavelengthMonitor,
 )
