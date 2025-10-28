@@ -88,11 +88,9 @@ def load_analyzer_for_detector(
         The loaded analyzer for the given detector triplet.
         Only a subset of fields is returned.
     """
-    from ess.reduce.nexus._nexus_loader import _open_component_parent
+    from ess.reduce.nexus import open_component_group
 
-    with _open_component_parent(
-        detector_location, parent_class=snx.NXcrystal
-    ) as parent:
+    with open_component_group(detector_location, nx_class=snx.NXcrystal) as parent:
         analyzer_name = _analyzer_name_for_detector_name(
             detector_location.component_name, parent.keys()
         )
