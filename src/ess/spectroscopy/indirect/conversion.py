@@ -19,6 +19,7 @@ from ..types import (
     InelasticCoordTransformGraph,
     MonitorCoordTransformGraph,
     MonitorType,
+    NormalizedIncidentEnergyDetector,
     PrimarySpecCoordTransformGraph,
     RunType,
     SecondarySpecCoordTransformGraph,
@@ -210,7 +211,7 @@ def inelastic_coordinate_transformation_graph_at_sample(
 
 
 def add_inelastic_coordinates(
-    data: TofDetector[RunType], graph: InelasticCoordTransformGraph
+    data: NormalizedIncidentEnergyDetector[RunType], graph: InelasticCoordTransformGraph
 ) -> EnergyQDetector[RunType]:
     transformed = data.transform_coords(
         [
@@ -235,6 +236,7 @@ def add_incident_energy(
     transformed = data.transform_coords(
         [
             'incident_energy',
+            'incident_wavelength',  # TODO
             # These are inputs, but we need them for binning:
             'a3',
             'a4',
@@ -298,16 +300,20 @@ def monitor_coordinate_transformation_graph() -> MonitorCoordTransformGraph:
         {
             **beamline.beamline(scatter=False),
             **tof.elastic_wavelength(start='tof'),
+            'incident_wavelength': 'wavelength',
         }
     )
 
 
-def add_monitor_wavelength_coords(
+def add_monitor_wavelength_coord(
     monitor: TofMonitor[RunType, MonitorType], graph: MonitorCoordTransformGraph
 ) -> WavelengthMonitor[RunType, MonitorType]:
     return WavelengthMonitor[RunType, MonitorType](
         monitor.transform_coords(
-            'wavelength', graph=graph, keep_intermediate=False, keep_aliases=False
+            'incident_wavelength',
+            graph=graph,
+            keep_intermediate=False,
+            keep_aliases=False,
         )
     )
 
@@ -315,7 +321,7 @@ def add_monitor_wavelength_coords(
 providers = (
     add_inelastic_coordinates,
     add_incident_energy,
-    add_monitor_wavelength_coords,
+    add_monitor_wavelength_coord,
     inelastic_coordinate_transformation_graph_at_sample,
     monitor_coordinate_transformation_graph,
 )
