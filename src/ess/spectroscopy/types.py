@@ -16,6 +16,7 @@ from ess.reduce.uncertainty import UncertaintyBroadcastMode as _UncertaintyBroad
 
 Beamline = reduce_t.Beamline
 DetectorPositionOffset = reduce_t.DetectorPositionOffset
+DynamicPosition = reduce_t.DynamicPosition
 EmptyDetector = reduce_t.EmptyDetector
 Filename = reduce_t.Filename
 GravityVector = reduce_t.GravityVector
@@ -36,20 +37,17 @@ RawMonitor = reduce_t.RawMonitor
 SampleRun = reduce_t.SampleRun
 VanadiumRun = reduce_t.VanadiumRun
 
-FrameMonitor0 = reduce_t.FrameMonitor0
-FrameMonitor1 = reduce_t.FrameMonitor1
-FrameMonitor2 = reduce_t.FrameMonitor2
-FrameMonitor3 = reduce_t.FrameMonitor3
+# BIFROST monitors
+ElasticMonitor = NewType('ElasticMonitor', int)
+NormalizationMonitor = NewType('NormalizationMonitor', int)
+PSCMonitor = NewType('PSCMonitor', int)
+OverlapMonitor = NewType('OverlapMonitor', int)
 
 # Type vars
 
 RunType = TypeVar("RunType", SampleRun, VanadiumRun)
 MonitorType = TypeVar(
-    "MonitorType",
-    FrameMonitor0,
-    FrameMonitor1,
-    FrameMonitor2,
-    FrameMonitor3,
+    "MonitorType", ElasticMonitor, NormalizationMonitor, PSCMonitor, OverlapMonitor
 )
 
 # Time-of-flight types
@@ -74,10 +72,6 @@ class Analyzer(sciline.Scope[RunType, sc.DataGroup[Any]], sc.DataGroup[Any]):
 
     Can be obtained from ``Analyzers``.
     """
-
-
-class Analyzers(sciline.Scope[RunType, sc.DataGroup[Any]], sc.DataGroup[Any]):
-    """All wavelength analyzers loaded from a NXcrystals."""
 
 
 class DataAtSample(sciline.Scope[RunType, sc.DataArray], sc.DataArray): ...

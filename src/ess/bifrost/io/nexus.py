@@ -3,18 +3,23 @@
 
 """NeXus input/output for BIFROST."""
 
+import warnings
+
+import numpy as np
 import scipp as sc
 import scippnexus as snx
 
-from ess.reduce.nexus import load_all_components, open_component_group
-from ess.reduce.nexus.types import NeXusAllLocationSpec, NeXusLocationSpec
+from ess.reduce.nexus import open_component_group
+from ess.reduce.nexus.types import NeXusLocationSpec, TransformationTimeFilter
 from ess.spectroscopy.types import (
     Analyzer,
-    Analyzers,
+    DynamicPosition,
     InstrumentAngle,
     NeXusClass,
+    NeXusComponent,
     NeXusComponentLocationSpec,
     NeXusFileSpec,
+    NeXusTransformation,
     RunType,
     SampleAngle,
 )
@@ -49,72 +54,170 @@ def _load_experiment_parameter(
         return group[param_name][()]['value']
 
 
-def load_analyzers(file_spec: NeXusFileSpec[RunType]) -> Analyzers[RunType]:
-    """Load all analyzers in a NeXus file."""
-    return Analyzers[RunType](
-        load_all_components(
-            NeXusAllLocationSpec(filename=file_spec.value),
-            nx_class=snx.NXcrystal,
-        )
-    )
-
-
-def _get_analyzer_for_detector_name(
-    detector_name: str, analyzers: Analyzers[RunType]
-) -> Analyzers[RunType]:
-    detector_index = int(detector_name.split('_', 1)[0])
-    analyzer_index = str(detector_index - 2)
-    for name, analyzer in analyzers.items():
-        if name.startswith(analyzer_index):
-            return analyzer
-    raise RuntimeError(f"No analyzer found for detector {detector_name}")
-
-
-def analyzer_for_detector(
-    analyzers: Analyzers[RunType],
+def load_analyzer_for_detector(
     detector_location: NeXusComponentLocationSpec[snx.NXdetector, RunType],
-) -> Analyzer[RunType]:
-    """Extract the analyzer for a given detector.
+) -> NeXusComponent[snx.NXcrystal, RunType]:
+    """Load the analyzer component for the given detector.
 
-    Note
-    ----
-    Depends heavily on the names of components being preceded by an instrument index,
-    and the analyzer and detector components being separated in index by 2.
-    If either condition changes, this function will need to be modified.
+    This function searches for an ``NXcrystal`` in the inputs (via the
+    'input' attribute) of the detector and loads the first NeXus group it finds.
+
+    See Also
+    --------
+    get_calibrated_analyzer:
+        A provider that combines loaded analyzer data into an ``Analyzer`` object.
+    """
+    with open_component_group(detector_location, nx_class=snx.NXdetector) as det_group:
+        analyzer_group = _find_class_in_inputs(
+            group=det_group.parent, target=snx.NXcrystal, start=det_group
+        )
+        return analyzer_group[()]
+
+
+def _find_class_in_inputs(
+    group: snx.Group, target: type, start: snx.Group
+) -> snx.Group:
+    """Search for a NeXus class in a group's inputs.
+
+    This function uses a breadth-first search through ``'input'`` attributes.
+    It begins at ``start`` and walks along chains of inputs until a group with the
+    given class is found, the chain ends, or the chain leads outside ``group``.
 
     Parameters
     ----------
-    analyzers:
-        Data group of loaded analyzers.
-    detector_location:
-        The location of an NXdetector in the NeXus file.
-        The analyzer is identified based on this location.
+    group: HDF5 Group
+        The group that contains all possible next named groups
+    target:
+        The NeXus class to look for.
 
     Returns
     -------
     :
-        The analyzer for the given detector triplet.
+        The group with the target NeXus class found within ``group``.
+    """
+    pending = [start]
+    while pending:
+        element = pending.pop(0)
+        if element.nx_class == target:
+            return element
+        for name in _get_inputs(element):
+            try:
+                pending.append(group[name])
+            except KeyError:
+                warnings.warn(f"No '{name}' in NeXus group {group.name}", stacklevel=2)
+                continue
+    raise ValueError(f"No {target} found in the inputs of {start.name}")
+
+
+def _get_inputs(group: snx.Group) -> list[str]:
+    try:
+        inputs = group.attrs['inputs']
+    except KeyError:
+        return []
+    # Deal with nexusformat (Python module) or kafka-to-nexus (filewriter)
+    # silently converting a len(list[str]) == 1 attribute to a str attribute:
+    return [inputs] if isinstance(inputs, str) else inputs
+
+
+def get_calibrated_analyzer(
+    analyzer_component: NeXusComponent[snx.NXcrystal, RunType],
+    analyzer_transform: NeXusTransformation[snx.NXcrystal, RunType],
+    analyzer_position: DynamicPosition[snx.NXcrystal, RunType],
+) -> Analyzer[RunType]:
+    """Collect the data for a single analyzer.
+
+    This provider works together with :func:`load_analyzer_for_detector` and the
+    generic NeXus workflow from ESSreduce.
+    ``load_analyzer_for_detector`` loads a raw analyzer component.
+    Then the default providers from ESSreduce extract a transform and position like
+    for any other component.
+    Finally, this provider combines the data into a single Analyzer object.
+
+    Parameters
+    ----------
+    analyzer_component:
+        Data group of loaded analyzers.
+    analyzer_transform:
+        Transformation matrix of the analyzer.
+    analyzer_position:
+        The computed position vector of the analyzer.
+
+    Returns
+    -------
+    :
+        A given analyzer.
         Only a subset of fields is returned.
     """
-    if detector_location.component_name is None:
-        raise ValueError("Detector component name is None")
-    analyzer = snx.compute_positions(
-        _get_analyzer_for_detector_name(detector_location.component_name, analyzers),
-        store_transform='transform',
-    )
+
     return Analyzer[RunType](
         sc.DataGroup(
-            dspacing=analyzer['d_spacing'],
-            position=analyzer['position'],
-            transform=analyzer['transform'],
+            dspacing=analyzer_component['d_spacing'],
+            position=analyzer_position,
+            transform=analyzer_transform,
         )
     )
 
 
+def _collapse_runs(transform: sc.DataArray, dim: str) -> sc.DataArray:
+    """Collapse runs of equal values into a single value."""
+    # Find indices where the data changes
+    different_from_previous = np.hstack(
+        [True, ~np.isclose(transform.values[:-1], transform.values[1:])]
+    )
+    change_indices = np.flatnonzero(different_from_previous)
+    if change_indices.shape == transform.shape:
+        return transform  # Return early to avoid expensive indexing
+    # Get unique values
+    unique_values = transform[change_indices]
+
+    # Make bin-edges and extend range to include the whole measurement
+    last = unique_values.coords[dim][-1]
+    unique_values.coords[dim] = sc.concat(
+        [
+            # bin-edges are left-inclusive, so we can start with coord[0] as first edge
+            unique_values.coords[dim],
+            # Surely, no experiment will last more than 10 years...
+            last + sc.scalar(10, unit='Y').to(unit=last.unit),
+        ],
+        dim=dim,
+    )
+
+    return unique_values
+
+
+def stepwise_transformation_time_filter(transform: sc.DataArray) -> sc.DataArray:
+    """Collapse runs of equal values into a single value.
+
+    This can be used as a time filter for NeXus transformations when the component
+    mostly stays at one position and only rarely moves.
+    For example, a stepwise scan across detector rotations.
+
+    Repeated values are identified using :func:`numpy.isclose` with default tolerances
+    applied to the individual transformation components.
+    I.e., for the BIFROST detector, the detector angle (currently in degrees)
+    is checked for approximate equality between consecutive values.
+
+    Note
+    ----
+    This approach is meant to handle noisy NXlogs if they are written
+    from readback values or repeated setpoint values.
+    We currently do not know enough about how ESS NeXus files will be written for
+    real measurements, so we may need to revisit this approach.
+    """
+    collapsed = _collapse_runs(transform, 'time')
+    if collapsed.sizes['time'] == 1:
+        return collapsed.squeeze('time')
+    return collapsed
+
+
 providers = (
-    analyzer_for_detector,
-    load_analyzers,
+    get_calibrated_analyzer,
+    load_analyzer_for_detector,
     load_instrument_angle,
     load_sample_angle,
     moderator_class_for_source,
 )
+
+parameters = {
+    TransformationTimeFilter: stepwise_transformation_time_filter,
+}

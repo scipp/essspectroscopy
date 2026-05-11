@@ -3,11 +3,15 @@
 
 """Detector handling for BIFROST."""
 
+from collections.abc import Callable
+
 import scipp as sc
 import scippnexus as snx
 
+from ess.reduce.nexus.types import Position
 from ess.spectroscopy.indirect.conversion import add_spectrometer_coords
 from ess.spectroscopy.types import (
+    Analyzer,
     DetectorPositionOffset,
     EmptyDetector,
     NeXusComponent,
@@ -78,6 +82,7 @@ def arc_and_channel_from_detector_number(
 
 def get_calibrated_detector_bifrost(
     detector: NeXusComponent[snx.NXdetector, RunType],
+    analyzer: Analyzer[RunType],
     *,
     transform: NeXusTransformation[snx.NXdetector, RunType],
     offset: DetectorPositionOffset[RunType],
@@ -86,17 +91,19 @@ def get_calibrated_detector_bifrost(
 ) -> EmptyDetector[RunType]:
     """Extract the data array corresponding to a detector's signal field.
 
-    The data array is reshaped to the logical detector shape.
+    This includes:
 
-    This function is specific to BIFROST and differs from the generic
-    :func:`ess.reduce.nexus.workflow.get_calibrated_detector` in that it does not
-    fold the detectors into logical dimensions because the files already contain
-    the detectors in the correct shape.
+    - Reshaping the data array is reshaped to the logical detector shape.
+    - Assigning geometry coordinate "position".
+    - Assigning spectrometer coordinates such as "final_energy",
+      "secondary_flight_time", and "L1".
 
     Parameters
     ----------
     detector:
         Loaded NeXus detector.
+    analyzer:
+        Loaded analyzer parameters.
     transform:
         Transformation that determines the detector position.
     offset:
@@ -112,18 +119,10 @@ def get_calibrated_detector_bifrost(
     -------
     :
         Detector geometry and spectrometer coordinates.
-        This includes "final_energy", "secondary_flight_time", and "L1".
     """
 
-    from ess.reduce.nexus.types import DetectorBankSizes
-    from ess.reduce.nexus.workflow import get_calibrated_detector
-
-    da = get_calibrated_detector(
-        detector=detector,
-        transform=transform,
-        offset=offset,
-        # The detectors are folded in the file, no need to do that here.
-        bank_sizes=DetectorBankSizes({}),
+    da = get_base_calibrated_detector_bifrost(
+        detector, analyzer, transform=transform, offset=offset
     )
     da = da.rename(dim_0='tube', dim_1='length')
 
@@ -131,9 +130,99 @@ def get_calibrated_detector_bifrost(
     da.coords['arc'] = arc
     da.coords['channel'] = channel
 
-    da = add_spectrometer_coords(da, primary_graph, secondary_graph)
+    da = add_spectrometer_coords(
+        da,
+        primary_graph,
+        SecondarySpecCoordTransformGraph[RunType](
+            {**secondary_graph, **_make_analyzer_coord_graph(da, analyzer)}
+        ),
+    )
 
     return EmptyDetector[RunType](da)
+
+
+def get_base_calibrated_detector_bifrost(
+    detector: NeXusComponent[snx.NXdetector, RunType],
+    analyzer: Analyzer[RunType],
+    *,
+    transform: NeXusTransformation[snx.NXdetector, RunType],
+    offset: DetectorPositionOffset[RunType],
+) -> sc.DataArray:
+    """Extract the data array corresponding to a detector's signal field.
+
+    This function is specific to BIFROST and differs from the generic
+    :func:`ess.reduce.nexus.workflow.get_calibrated_detector` in that it
+    assigns time-dependent positions by broadcasting the data into the 'time' dimension.
+
+    Parameters
+    ----------
+    detector:
+        Loaded NeXus detector.
+    analyzer:
+        Loaded analyzer parameters.
+    transform:
+        Transformation that determines the detector position.
+    offset:
+        Offset to add to the detector position.
+
+    Returns
+    -------
+    :
+        Detector with geometry coordinates.
+    """
+
+    from ess.reduce.nexus import compute_detector_position, extract_signal_data_array
+
+    da = extract_signal_data_array(detector)
+    position = compute_detector_position(da, transform=transform, offset=offset)
+    return _assign_detector_position(da, position)
+
+
+def _assign_detector_position(
+    da: sc.DataArray, position: sc.Variable | sc.DataArray
+) -> sc.DataArray:
+    if isinstance(position, sc.DataArray):  # time-dependent transform
+        # Store position and time as separate coords because we can't store data arrays.
+        return da.broadcast(
+            dims=['time', *da.dims], shape=[position.sizes['time'], *da.shape]
+        ).assign_coords(position=position.data, time=position.coords['time'])
+    return da.assign_coords(position=position)
+
+
+# We insert the analyzer coords into the graph so that they don't end up as coords
+# in the output. This could be done in the provider of SecondarySpecCoordTransformGraph
+# but that provider would then have to request the detector component to check
+# the time coordinates.
+def _make_analyzer_coord_graph(
+    detector: sc.DataArray,
+    analyzer: Analyzer[RunType],
+) -> dict[str, Callable[[], sc.Variable]]:
+    ana_pos: Position[snx.NXcrystal, RunType] = analyzer['position']
+    if ana_pos.is_dynamic:
+        if 'time' not in detector.coords:
+            raise sc.CoordError(
+                "The analyzer position is time-dependent but the detector is not"
+            )
+        analyzer_positions = ana_pos.positions
+        if not sc.identical(analyzer_positions.coords['time'], detector.coords['time']):
+            raise sc.CoordError(
+                f"The analyzer and detector positions are not at the same times.\n"
+                f"Analyzer: {analyzer_positions.coords['time']}\n"
+                f"Detector: {detector.coords['time']}\n"
+                "This is likely due to a change in the NeXus structure. It used to "
+                "guarantee that the times are identical."
+            )
+        analyzer_position = analyzer_positions.data
+        analyzer_transform = analyzer['transform'].value.data
+    else:
+        analyzer_position = ana_pos.position
+        analyzer_transform = analyzer['transform'].value
+
+    return {
+        'analyzer_dspacing': lambda: analyzer['dspacing'],
+        'analyzer_position': lambda: analyzer_position,
+        'analyzer_transform': lambda: analyzer_transform,
+    }
 
 
 def merge_triplets(

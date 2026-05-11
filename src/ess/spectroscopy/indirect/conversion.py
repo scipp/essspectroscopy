@@ -244,7 +244,7 @@ def add_incident_energy(
 
 
 def add_spectrometer_coords(
-    data: sc.DataArray,
+    detector: sc.DataArray,
     primary_graph: PrimarySpecCoordTransformGraph[RunType],
     secondary_graph: SecondarySpecCoordTransformGraph[RunType],
 ) -> sc.DataArray:
@@ -252,10 +252,9 @@ def add_spectrometer_coords(
 
     Parameters
     ----------
-    data:
-        Data array with beamline coordinates "position", "source_position", and
-        "sample_position".
-        Does not need to contain events or flight times.
+    detector:
+        Data array with a "position" coordinate.
+        Does not need to contain events, wavelength, or flight times.
     primary_graph:
         Coordinate transformation graph for the primary spectrometer.
     secondary_graph:
@@ -269,7 +268,7 @@ def add_spectrometer_coords(
         Input data with added spectrometer coordinates.
         This includes "final_energy", "secondary_flight_time", and "L1".
     """
-    return data.transform_coords(
+    return detector.transform_coords(
         (
             'final_energy',
             'final_wavevector',

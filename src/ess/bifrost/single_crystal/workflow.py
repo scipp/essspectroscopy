@@ -7,9 +7,8 @@ import sciline
 from ess.reduce import unwrap as reduce_unwrap
 from ess.spectroscopy.indirect.time_of_flight import TofWorkflow
 from ess.spectroscopy.types import (
-    FrameMonitor1,
-    FrameMonitor2,
-    FrameMonitor3,
+    ElasticMonitor,
+    NormalizationMonitor,
     SampleRun,
 )
 
@@ -17,11 +16,12 @@ from ..cutting import group_by_rotation
 from ..io import nexus
 from ..io.mcstas import convert_simulated_time_to_event_time_offset
 from ..workflow import default_parameters, simulation_default_parameters
-from . import conversion, q_map, time_of_flight
+from . import conversion, detector, q_map, time_of_flight
 
 _PROVIDERS = (
     *nexus.providers,
     *conversion.providers,
+    *detector.providers,
     *q_map.providers,
     *time_of_flight.providers,
     group_by_rotation,
@@ -30,6 +30,7 @@ _PROVIDERS = (
 _SIMULATION_PROVIDERS = (
     *nexus.providers,
     *conversion.providers,
+    *detector.providers,
     *q_map.providers,
     *time_of_flight.providers,
     convert_simulated_time_to_event_time_offset,
@@ -40,7 +41,7 @@ _SIMULATION_PROVIDERS = (
 def BifrostBraggPeakMonitorWorkflow() -> sciline.Pipeline:
     workflow = TofWorkflow(
         run_types=(SampleRun,),
-        monitor_types=(FrameMonitor1, FrameMonitor2, FrameMonitor3),
+        monitor_types=(ElasticMonitor, NormalizationMonitor),
     )
     # Use the vanilla implementation instead of the indirect geometry one:
     workflow.insert(reduce_unwrap.to_wavelength.detector_wavelength_data)
@@ -54,7 +55,7 @@ def BifrostBraggPeakMonitorWorkflow() -> sciline.Pipeline:
 def BifrostSimulationBraggPeakMonitorWorkflow() -> sciline.Pipeline:
     workflow = TofWorkflow(
         run_types=(SampleRun,),
-        monitor_types=(FrameMonitor1, FrameMonitor2, FrameMonitor3),
+        monitor_types=(ElasticMonitor, NormalizationMonitor),
     )
     # Use the vanilla implementation instead of the indirect geometry one:
     workflow.insert(reduce_unwrap.to_wavelength.detector_wavelength_data)

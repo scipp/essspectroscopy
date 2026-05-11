@@ -14,15 +14,15 @@ from ess.spectroscopy.indirect.kf import providers as kf_providers
 from ess.spectroscopy.indirect.ki import providers as ki_providers
 from ess.spectroscopy.indirect.time_of_flight import TofWorkflow
 from ess.spectroscopy.types import (
+    ElasticMonitor,
     EmptyDetector,
-    FrameMonitor0,
-    FrameMonitor1,
-    FrameMonitor2,
-    FrameMonitor3,
     NeXusData,
     NeXusDetectorName,
     NeXusMonitorName,
+    NormalizationMonitor,
+    OverlapMonitor,
     ProtonCharge,
+    PSCMonitor,
     PulsePeriod,
     RawDetector,
     SampleRun,
@@ -39,23 +39,21 @@ from .normalization import providers as normalisation_providers
 def default_parameters() -> dict[type, Any]:
     """Default parameters for BifrostWorkflow."""
     return {
-        NeXusMonitorName[FrameMonitor1]: '090_frame_1',
-        NeXusMonitorName[FrameMonitor2]: '097_frame_2',
-        NeXusMonitorName[FrameMonitor3]: '110_frame_3',
+        NeXusMonitorName[ElasticMonitor]: "elastic_monitor",
+        NeXusMonitorName[NormalizationMonitor]: "normalization_monitor",
+        NeXusMonitorName[OverlapMonitor]: "overlap_monitor",
+        NeXusMonitorName[PSCMonitor]: "psc_monitor",
         PulsePeriod: 1.0 / sc.scalar(14.0, unit="Hz"),
         UncertaintyBroadcastMode: UncertaintyBroadcastMode.fail,
+        **nexus.parameters,
     }
 
 
 def simulation_default_parameters() -> dict[type, Any]:
     """Default parameters for BifrostSimulationWorkflow."""
     return {
-        NeXusMonitorName[FrameMonitor1]: '090_frame_1',
-        NeXusMonitorName[FrameMonitor2]: '097_frame_2',
-        NeXusMonitorName[FrameMonitor3]: '110_frame_3',
-        PulsePeriod: 1.0 / sc.scalar(14.0, unit="Hz"),
+        **default_parameters(),
         ProtonCharge[SampleRun]: sc.DataArray(sc.scalar(1.0, unit='pC')),
-        UncertaintyBroadcastMode: UncertaintyBroadcastMode.fail,
     }
 
 
@@ -98,7 +96,12 @@ def BifrostSimulationWorkflow(
     """
     workflow = TofWorkflow(
         run_types=(SampleRun,),
-        monitor_types=(FrameMonitor0, FrameMonitor1, FrameMonitor2, FrameMonitor3),
+        monitor_types=(
+            ElasticMonitor,
+            NormalizationMonitor,
+            OverlapMonitor,
+            PSCMonitor,
+        ),
     )
     for provider in _SIMULATION_PROVIDERS:
         workflow.insert(provider)
@@ -120,7 +123,12 @@ def BifrostWorkflow(
     """Data reduction workflow for BIFROST."""
     workflow = TofWorkflow(
         run_types=(SampleRun,),
-        monitor_types=(FrameMonitor0, FrameMonitor1, FrameMonitor2, FrameMonitor3),
+        monitor_types=(
+            ElasticMonitor,
+            NormalizationMonitor,
+            OverlapMonitor,
+            PSCMonitor,
+        ),
     )
     for provider in _PROVIDERS:
         workflow.insert(provider)
