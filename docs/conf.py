@@ -277,3 +277,9 @@ linkcheck_ignore = [
     r'https?://jira\.ess\.eu',
     r'https?://dx\.doi\.org/',
 ]
+
+# -- Redirect to new docs --------------------------------------------------
+
+redirects = {
+    "*": "https://scipp.github.io/ess/spectroscopy/$source.html",
+}
